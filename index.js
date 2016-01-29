@@ -3,13 +3,16 @@
  *  https://github.com/lazd/karma-benchmark-reporter
  *  Copyright (c) 2014 Larry Davis
  *
- * Expended to log more benchmark stats and 
- * print to json file.
+ * Expended to log more benchmark stats and
+ * print to json file and generate plotly graphs.
  *
  */
 
 var fs = require('fs');
 var path = require('path');
+
+var createPlotly = require('plotly')
+var each = require('foreach');
 
 
 var BenchReporter = function(baseReporterDecorator) {
@@ -17,52 +20,107 @@ var BenchReporter = function(baseReporterDecorator) {
 
   var resultSet = {};
 
+  this.specSuccess = function(browser, result) {
+    var browserName = browser.name;
+    var suite = result.benchmark.suite;
+
+    // Get set and store results
+    var browserSet = resultSet[browserName] = resultSet[browserName] || {};
+    browserSet[suite] = browserSet[suite] || [];
+    browserSet[suite].push(result);
+
+    this.write('.');
+  };
+
   this.onRunComplete = function(browsers, resultInfo) {
-    for (var browserName in resultSet) {
-      var groups = resultSet[browserName];
+    var self = this;
 
-      this.write(browserName+'\n');
+    fs.writeFileSync('tmp.json', formatter(resultSet));
+    self.write('\n');
 
-      for (var groupName in groups) {
-        var results = groups[groupName]
-        if (results.length > 1) {
+    each(resultSet, function(groups) {
+      each(groups, function(results) {
+        if(results.length > 1) {
+
           // Find the fastest among the groups
           results.sort(function(a, b) {
             return b.benchmark.hz - a.benchmark.hz;
           });
 
-          var fastest = results[0];
-          var secondFastest = results[1];
+          var p1 = results[0];
+          var p2 = results[1];
 
-          var timesFaster = (fastest.benchmark.hz/secondFastest.benchmark.hz).toFixed(2);
-          this.write('  '+fastest.benchmark.suite+': '+fastest.benchmark.name+' at '+Math.floor(fastest.benchmark.hz)+' ops/sec ('+timesFaster+'x faster than '+secondFastest.benchmark.name+')\n');
+          var timesFaster = (p1.benchmark.hz / p2.benchmark.hz).toFixed(2);
+
+          self.write([
+            p1.benchmark.suite + ':',
+              '"' + p1.benchmark.name + '"', 'at',
+                Math.floor(p1.benchmark.hz), 'ops/sec',
+              '(' + timesFaster, 'x faster than',
+                '"' + p2.benchmark.name + '"' + ')\n'
+          ].join(' '));
         }
         else {
-          this.write('  '+results[0].description+' had no peers for comparison at '+Math.floor(results[0].benchmark.hz)+' ops/sec\n')
-          this.write('sup?\n')
+          var result = results[0];
 
-          fs.writeFileSync('tmp.js', 'su???p?')
+          self.write([
+            '\n',
+            result.description,
+            'had no peers for comparison at',
+            Math.floor(result.benchmark.hz), ' ops/sec\n'
+          ].join(' '));
         }
-      }
-    }
-  };
-
-  this.specSuccess = function(browser, result) {
-    var browser = browser.name;
-    var suite = result.benchmark.suite;
-    var name = result.benchmark.name;
-
-    // Get set and store results
-    var browserSet = resultSet[browser] = resultSet[browser] || {};
-    browserSet[suite] = browserSet[suite] || [];
-    browserSet[suite].push(result);
-
-    this.write(browser+'  '+suite+': '+name+' at '+Math.floor(result.benchmark.hz)+' ops/sec\n');
+      });
+    });
   };
 };
+
+function formatter(resultSet) {
+  var runs= [];
+  var caseNames = [];
+
+  each(resultSet, function(groups, browserName) {
+    each(groups, function(results,groupName) {
+      each(results, function(result) {
+        var benchmark = result.benchmark;
+        var benchmarkName = benchmark.name;
+
+        var caseName = [
+          browserName, groupName, benchmarkName
+        ].join('-');
+
+        if(caseNames.indexOf(caseName) !== -1) {
+          // TODO maybe a console.log instead
+          throw new Error('same bench done twice');
+        }
+
+        caseNames.push(caseName);
+
+        runs.push({
+          fullName: caseName,
+          browser: browserName,
+          suite: groupName,     // TODO is this correct?
+          name: benchmarkName,
+          time: result.time,
+          count: result.count,
+          cycles: result.cycles,
+          hz: result.hz,
+          stats: benchmark.stats
+        });
+
+      });
+    });
+  });
+
+  var out = {
+    runs: runs
+  };
+
+  return JSON.stringify(out, null, 2);
+}
 
 BenchReporter.$inject = ['baseReporterDecorator'];
 
 module.exports = {
-  'reporter:benchmark': ['type', BenchReporter]
+  'reporter:plotly': ['type', BenchReporter]
 };

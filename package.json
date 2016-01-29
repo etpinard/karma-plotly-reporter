@@ -17,5 +17,9 @@
     "karma-reporter",
     "karma-benchmark",
     "benchmark"
-  ]
+  ],
+  "dependencies": {
+    "foreach": "^2.0.5",
+    "plotly": "^1.0.6"
+  }
 }
