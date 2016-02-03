@@ -1,6 +1,6 @@
 {
   "name": "karma-plotly-reporter",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A reporter for karma-benchmark generating plotly graphs",
   "author": "Étienne Tétreault-Pinard",
   "license": "MIT",
